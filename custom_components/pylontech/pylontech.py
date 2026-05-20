@@ -43,6 +43,8 @@ class Sensor:
         The input line is assumed to be of a "Label : value" form,
         so the value starts after first ":" character.
         """
+        clean_source = source.replace("(Y)", "").replace("(N)", "")
+
         self.set(source[source.index(":") + 1 :])
         return self
 
@@ -162,6 +164,8 @@ class Voltage(Sensor):
         The input line is assumed to be of a "Label : value" form,
         so the value starts after first ":" character.
         """
+        clean_source = source.replace("(Y)", "").replace("(N)", "")
+        
         self.set(source[source.index(":") + 1 :], divider)
         return self
 
@@ -236,6 +240,7 @@ class UnitValues(HasSensors):
         self.volt = Voltage("Voltage").set(chunks.pop(0))
         self.curr = Current("Current").set(chunks.pop(0))
         self.temp = Temp("Temperature").set(chunks.pop(0))
+        self.avg_temp = Temp("Temperature avg").set(chunks.pop(0)) 
         self.cell_temp_low = Temp("Lowest cell temperature").set(chunks.pop(0))
         self.cell_temp_high = Temp("Highest cell temperature").set(chunks.pop(0))
         self.cell_volt_low = Voltage("Lowest cell voltage").set(chunks.pop(0))
@@ -321,16 +326,29 @@ class BatCommand(HasSensors):
     def __init__(self, lines: list[str]) -> None:
         """Initialize the bat sensor."""
         lines.pop(0)  # Time
+
         if "Tempr" in lines[0]:
             self.avg_temp = Temp("Average Temperature").setValue(lines.pop(0))
-        if "Curr" in lines[0]:
+        if "C.Curr" in lines[0]:
             self.charge_curr = Current("Charge Current").setValue(lines.pop(0))
-        if "Curr" in lines[0]:
+        if "D.Curr" in lines[0]:
             self.discharge_curr = Current("Discharge Current").setValue(lines.pop(0))
+            
+        if "CommVolt" in lines[0]:
+            volt_line = lines.pop(0).replace("(Y)", "").replace("(N)", "").replace("mV", "")
+            volt_raw = volt_line[volt_line.index(":") + 1 :].strip()
+            self.bal_volt = Voltage("Bat Voltage").set(volt_raw, 1000)
+            
+        if "Current" in lines[0]:
+            curr_line = lines.pop(0).replace("(Y)", "").replace("(N)", "").replace("mA", "")
+            curr_raw = curr_line[curr_line.index(":") + 1 :].strip()
+            self.current = Current("Current").set(curr_raw, 1000)
+
         if "State" in lines[0]:
             self.b_state = Text("Bat State").setValue(lines.pop(0))
         if "Volt" in lines[0]:
-            self.bal_volt = Voltage("Bat Voltage").setValue(lines.pop(0), 10)
+            self.bal_volt = Voltage("Bat Voltage").setValue(lines.pop(0), 10) 
+            
         header = lines.pop(0)
         self.values: list[BatValues] = []
         cell = len(lines) - 1  # bat returs cells in reverse units order
@@ -356,9 +374,11 @@ class BatValues(HasSensors):
         chunks = line.split()
         self.unit = unit
         chunks.pop(0)  # Index
-        self.volt = Voltage("Cell voltage").set(chunks.pop(0))
+        volt_raw = chunks.pop(0).replace("(Y)", "").replace("(N)", "")
+        self.volt = Voltage("Cell voltage").set(volt_raw)
         self.curr = Current("Cell current").set(chunks.pop(0))
         self.tempr = Temp("Cell temperature").set(chunks.pop(0))
+        if chunks[0] in ("(Y)", "(N)"): chunks.pop(0)
         self.v_state = Text("Cell voltage state").set(chunks.pop(0))
         self.t_state = Text("Cell temperature state").set(chunks.pop(0))
         self.charge_ah_perc = Percent("Cell charge Ah %").set(chunks.pop(0))
@@ -453,7 +473,7 @@ class PylontechBMS:
             data = await asyncio.wait_for(self.reader.read(120), 2)
             for i in data:
                 # there seem to be mix of LF and CR+LF line endings
-                if i not in (13, 10):
+                if i not in (13, 10, 255):
                     linebytes.append(i)
                 elif len(linebytes) > 0:
                     line = linebytes.decode("ascii")
