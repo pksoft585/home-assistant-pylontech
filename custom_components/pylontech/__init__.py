@@ -37,9 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_registry = dr.async_get(hass)
     bmu_serials = {
         device.serial_number: int(pattern.search(device.name).group(1))
-        for device in device_registry.devices.get_devices_for_config_entry_id(
-            entry.entry_id
-        )
+        for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id)
         if "BMU #" in device.name
     }
     # Add any potentially new bmu
