@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -38,8 +39,17 @@ class PylontechUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.pylontech: PylontechBMS = pylontech
         self.serial_nr: str = info.module_barcode.value
         self.device_info: DeviceInfo = _device(info)
+
+        # Get internal ID
+        dev_registry = dr.async_get(hass)
+        master_device = dev_registry.async_get_device_by_identifier(
+            entry.entry_id, 
+            {(DOMAIN, info.module_barcode.value)}
+        )
+        via_device_id = master_device.id if master_device else None
+
         self.unit_device_infos: tuple[DeviceInfo] = tuple(
-            _unit_device(info, bmu_serials[bmu], bmu) for bmu in info.bmu_modules
+            _unit_device(info, bmu_serials[bmu], bmu, via_device_id) for bmu in info.bmu_modules
         )
         self.sensors: dict[str, Sensor] = {}
         self.unit_sensors: dict[str, Sensor] = {}
@@ -124,6 +134,6 @@ def _unit_device(info: InfoCommand, idx: int, bmu: str) -> DeviceInfo:
         identifiers={(DOMAIN, bmu)},
         name=f"Pylontech BMU #{idx}",
         manufacturer=info.manufacturer.value,
-        via_device=(DOMAIN, info.module_barcode.value),
+        via_device_id=via_device_id,
         serial_number=bmu,
     )
